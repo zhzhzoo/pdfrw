@@ -40,8 +40,8 @@ class _PrimitiveTokens(object):
     # these before the single variety.
     dictdelim_pattern = r'\<\<|\>\>'
 
-    pattern = '(%s|%s|%s)' % (whitespace_pattern,
-                    dictdelim_pattern, delimiter_pattern)
+    pattern = '|'.join([whitespace_pattern,
+                        dictdelim_pattern, delimiter_pattern])
     re_func = re.compile(pattern).finditer
     del whitespace_pattern, dictdelim_pattern
     del delimiter_pattern, pattern
@@ -51,18 +51,17 @@ class _PrimitiveTokens(object):
         class MyIterator(object):
             def next():
                 if not tokens:
-                    startloc = self.startloc
-                    for match in next_match[0]:
+                    startloc = next_startloc[0]
+                    match = next_match[0]()
+                    if match is not None:
                         start = match.start()
                         end = match.end()
                         tappend(fdata[start:end])
                         if start > startloc:
                             tappend(fdata[startloc:start])
-                        self.startloc = end
-                        break
+                        next_startloc[0] = end
                     else:
                         s = fdata[startloc:]
-                        self.startloc = len(fdata)
                         if s:
                             tappend(s)
                     if not tokens:
@@ -70,59 +69,65 @@ class _PrimitiveTokens(object):
                 return tpop()
             next = staticmethod(next)
 
+        def coalesce(result):
+            ''' This function coalesces tokens together up until
+                the next delimiter or whitespace.
+                All of the coalesced tokens will either be non-matches,
+                or will be a matched backslash.  We distinguish the
+                non-matches by the fact that next() will have left
+                a following match inside self.tokens for the actual match.
+            '''
+            # Optimized path for usual case -- regular data (not a name string),
+            # with no escape character, and followed by whitespace.
+
+            if tokens:
+                token = tpop()
+                if token != '\\':
+                    if token[0] not in whitespace:
+                        tappend(token)
+                    return
+                result.append(token)
+
+            # Non-optimized path.  Either start of a name string received,
+            # or we just had one escape.
+
+            rappend = result.append
+            for token in self:
+                if tokens:
+                    rappend(token)
+                    token = tpop()
+                if token != '\\':
+                    if token[0] not in whitespace:
+                        tappend(token)
+                    return
+                rappend(token)
+
+        def setstart(startloc):
+            while tokens:
+                tpop()
+            old_loc = next_startloc[0]
+            if old_loc != startloc:
+                next_startloc[0] = startloc
+                next_match[0] = re_func(fdata, startloc).next
+
         self.fdata = fdata
         self.tokens = tokens = []
         self.iterator = iterator = MyIterator()
         self.next = iterator.next
         self.next_match = next_match = [None]
+        self.startloc = next_startloc = [0]
+        self.coalesce = coalesce
+        self.setstart = setstart
         tappend = tokens.append
         tpop = tokens.pop
-
-    def setstart(self, startloc):
-        self.startloc = startloc
-        self.next_match[0] = self.re_func(self.fdata, startloc)
+        re_func = self.re_func
+        whitespace = self.whitespaceset
 
     def __iter__(self):
         return self.iterator
 
-    def coalesce(self, result):
-        ''' This function coalesces tokens together up until
-            the next delimiter or whitespace.
-            All of the coalesced tokens will either be non-matches,
-            or will be a matched backslash.  We distinguish the
-            non-matches by the fact that next() will have left
-            a following match inside self.tokens for the actual match.
-        '''
-        tokens = self.tokens
-        whitespace = self.whitespaceset
-
-        # Optimized path for usual case -- regular data (not a name string),
-        # with no escape character, and followed by whitespace.
-
-        if tokens:
-            token = tokens.pop()
-            if token != '\\':
-                if token[0] not in whitespace:
-                    tokens.append(token)
-                return
-            result.append(token)
-
-        # Non-optimized path.  Either start of a name string received,
-        # or we just had one escape.
-
-        for token in self:
-            if tokens:
-                result.append(token)
-                token = tokens.pop()
-            if token != '\\':
-                if token[0] not in whitespace:
-                    tokens.append(token)
-                return
-            result.append(token)
-
-
     def floc(self):
-        return self.startloc - sum([len(x) for x in self.tokens])
+        return self.startloc[0] - sum([len(x) for x in self.tokens])
 
 class PdfTokens(object):
 
@@ -134,7 +139,7 @@ class PdfTokens(object):
                 tokens.append(token)
                 if token[0] in whitespaceset and ('\n' in token or '\r' in token):
                     break
-            return not strip_comments and ''.join(tokens)
+            return not strip_comments and join(tokens)
 
         def single(token):
             return token
@@ -158,7 +163,7 @@ class PdfTokens(object):
                         break
             else:
                 assert 0, "Unexpected end of token stream"
-            return PdfString(''.join(tokens))
+            return PdfString(join(tokens))
 
         def hex_string(token):
             tokens = [token]
@@ -168,7 +173,7 @@ class PdfTokens(object):
                     break
             while tokens[-2] == '>>':
                 tokens.append(tokens.pop(-2))
-            return PdfString(''.join(tokens))
+            return PdfString(join(tokens))
 
         def normal_data(token):
 
@@ -179,23 +184,25 @@ class PdfTokens(object):
             # will...
             if primitive_tokens:     #if token[0] not in whitespaceset:
                 tokens = [token]
-                primitive.coalesce(tokens)
-                return PdfObject(''.join(tokens))
+                coalesce(tokens)
+                return PdfObj(join(tokens))
 
         def name_string(token):
             tokens = [token]
-            primitive.coalesce(tokens)
-            token = ''.join(tokens)
-            if '#' in token:
-                substrs = token.split('#')
-                substrs.reverse()
-                tokens = [substrs.pop()]
-                while substrs:
-                    s = substrs.pop()
-                    tokens.append(chr(int(s[:2], 16)))
-                    tokens.append(s[2:])
-                token = ''.join(tokens)
-            return PdfObject(token)
+            coalesce(tokens)
+            token = join(tokens)
+            if '#' not in token:
+                return PdfObj(token)
+            substrs = token.split('#')
+            substrs.reverse()
+            tokens = [substrs.pop()]
+            while substrs:
+                s = substrs.pop()
+                tokens.append(chr(int(s[:2], 16)))
+                tokens.append(s[2:])
+            result = PdfObj(join(tokens))
+            result.encoded = token
+            return result
 
         def broken(token):
             assert 0, token
@@ -235,7 +242,10 @@ class PdfTokens(object):
         self.next = iterator.next
         primitive_next = primitive.next
         primitive_tokens = primitive.tokens
-        whitespaceset = _PrimitiveTokens.whitespaceset
+        whitespaceset = primitive.whitespaceset
+        coalesce = primitive.coalesce
+        PdfObj = PdfObject
+        join = ''.join
 
     def floc(self):
         return self.primitive.floc() - sum([len(x) for x in self.tokens])

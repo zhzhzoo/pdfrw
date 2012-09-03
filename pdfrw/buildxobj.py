@@ -15,11 +15,7 @@ Reference for syntax: "Parameters for opening PDF files" from SDK 8.1
 
         supported 'page=xxx', 'viewrect=<left>,<top>,<width>,<height>'
 
-        Also supported by this, but not by Adobe:
-            'rotate=xxx'  where xxx in [0, 90, 180, 270]
-
         Units are in points
-
 
 Reference for content:   Adobe PDF reference, sixth edition, version 1.7
 
@@ -39,7 +35,6 @@ class ViewInfo(object):
     docname = None
     page = None
     viewrect = None
-    rotate = None
 
     def __init__(self, pageinfo='', **kw):
         pageinfo=pageinfo.split('#',1)
@@ -54,7 +49,7 @@ class ViewInfo(object):
             key, value = item.split('=')
             key = key.strip()
             value = value.replace(',', ' ').split()
-            if key in ('page', 'rotate'):
+            if key == 'page':
                 assert len(value) == 1
                 setattr(self, key, int(value[0]))
             elif key == 'viewrect':
@@ -66,38 +61,7 @@ class ViewInfo(object):
             assert hasattr(self, key), key
             setattr(self, key, value)
 
-def get_rotation(rotate):
-    ''' Return clockwise rotation code:
-          0 = unrotated
-          1 = 90 degrees
-          2 = 180 degrees
-          3 = 270 degrees
-    '''
-    try:
-        rotate = int(rotate)
-    except (ValueError, TypeError):
-        return 0
-    if rotate % 90 != 0:
-        return 0
-    return rotate / 90
-
-def rotate_point(point, rotation):
-    if rotation & 1:
-        point = point[1], -point[0]
-    if rotation & 2:
-        point = -point[0], -point[1]
-    return point
-
-def rotate_rect(rect, rotation):
-    ''' Rotate both points within the rectangle, then normalize
-        the rectangle by returning the new lower left, then new
-        upper right.
-    '''
-    rect = rotate_point(rect[:2], rotation) + rotate_point(rect[2:], rotation)
-    return (min(rect[0], rect[2]), min(rect[1], rect[3]),
-            max(rect[0], rect[2]), max(rect[1], rect[3]))
-
-def getrects(inheritable, pageinfo, rotation):
+def getrects(inheritable, pageinfo):
     ''' Given the inheritable attributes of a page and
         the desired pageinfo rectangle, return the page's
         media box and the calculated boundary (clip) box.
@@ -107,58 +71,42 @@ def getrects(inheritable, pageinfo, rotation):
     if vrect is None:
         cbox = tuple([float(x) for x in (inheritable.CropBox or mbox)])
     else:
-        # Rotate the media box to match what the user sees,
-        # figure out the clipping box, then rotate back
-        mleft, mbot, mright, mtop = rotate_rect(mbox, rotation)
+        mleft, mbot, mright, mtop = mbox
         x, y, w, h = vrect
         cleft = mleft + x
         ctop = mtop - y
         cright = cleft + w
         cbot = ctop - h
         cbox = max(mleft, cleft), max(mbot, cbot), min(mright, cright), min(mtop, ctop)
-        cbox = rotate_rect(cbox, -rotation)
     return mbox, cbox
 
-
-def _cache_xobj(contents, resources, mbox, bbox, rotation):
+def _cache_xobj(contents, resources, mbox, bbox):
     ''' Return a cached Form XObject, or create a new one and cache it.
-        Adds private members x, y, w, h
     '''
     cachedict = contents.xobj_cachedict
     if cachedict is None:
         cachedict = contents.private.xobj_cachedict = {}
-    cachekey = mbox, bbox, rotation
-    result = cachedict.get(cachekey)
+    result = cachedict.get(bbox)
     if result is None:
         func = (_get_fullpage, _get_subpage)[mbox != bbox]
         result = PdfDict(
-            func(contents, resources, mbox, bbox, rotation),
+            func(contents, resources, mbox, bbox),
             Type = PdfName.XObject,
             Subtype = PdfName.Form,
             FormType = 1,
             BBox = PdfArray(bbox),
         )
-        rect = bbox
-        if rotation:
-            matrix = rotate_point((1, 0), rotation) + rotate_point((0, 1), rotation)
-            result.Matrix = PdfArray(matrix + (0, 0))
-            rect = rotate_rect(rect, rotation)
-
-        result.private.x = rect[0]
-        result.private.y = rect[1]
-        result.private.w = rect[2] - rect[0]
-        result.private.h = rect[3] - rect[1]
-        cachedict[cachekey] = result
+        cachedict[bbox] = result
     return result
 
-def _get_fullpage(contents, resources, mbox, bbox, rotation):
+def _get_fullpage(contents, resources, mbox, bbox):
     ''' fullpage is easy.  Just copy the contents,
         set up the resources, and let _cache_xobj handle the
         rest.
     '''
     return PdfDict(contents, Resources=resources)
 
-def _get_subpage(contents, resources, mbox, bbox, rotation):
+def _get_subpage(contents, resources, mbox, bbox):
     ''' subpages *could* be as easy as full pages, but we
         choose to complicate life by creating a Form XObject
         for the page, and then one that references it for
@@ -169,7 +117,7 @@ def _get_subpage(contents, resources, mbox, bbox, rotation):
         stream = '/FullPage Do\n',
         Resources = PdfDict(
             XObject = PdfDict(
-                FullPage = _cache_xobj(contents, resources, mbox, mbox, 0)
+                FullPage = _cache_xobj(contents, resources, mbox, mbox)
             )
         )
     )
@@ -180,17 +128,15 @@ def pagexobj(page, viewinfo=ViewInfo(), allow_compressed=True):
     '''
     inheritable = page.inheritable
     resources = inheritable.Resources
-    rotation = get_rotation(inheritable.Rotate)
-    mbox, bbox = getrects(inheritable, viewinfo, rotation)
-    rotation += get_rotation(viewinfo.rotate)
+    mbox, bbox = getrects(inheritable, viewinfo)
     contents = page.Contents
     # Make sure the only attribute is length
     # All the filters must have been executed
     assert int(contents.Length) == len(contents.stream)
     if not allow_compressed:
         assert len([x for x in contents.iteritems()]) == 1
-    return _cache_xobj(contents, resources, mbox, bbox, rotation)
 
+    return _cache_xobj(contents, resources, mbox, bbox)
 
 
 def docxobj(pageinfo, doc=None, allow_compressed=True):
@@ -211,7 +157,7 @@ def docxobj(pageinfo, doc=None, allow_compressed=True):
     elif pageinfo.doc is not None:
         doc = pageinfo.doc
     else:
-        doc = pageinfo.doc = PdfReader(pageinfo.docname, decompress = not allow_compressed)
+        doc = pageinfo.doc = PdfReader(pageinfo.docname)
     assert isinstance(doc, PdfReader)
 
     sourcepage = doc.pages[(pageinfo.page or 1) - 1]
