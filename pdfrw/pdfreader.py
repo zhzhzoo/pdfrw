@@ -193,14 +193,14 @@ class PdfReader(PdfDict):
             source.next()
             objheader = '%d %d obj' % (objnum, gennum)
             fdata = source.fdata
-            offset2 = fdata.find('\n' + objheader) + 1 or \
-                      fdata.find('\r' + objheader) + 1
-            if not offset2 or \
-               fdata.find(fdata[offset2 - 1] + objheader, offset2) > 0:
+            offset2 = (fdata.find('\n' + objheader) + 1 or
+                       fdata.find('\r' + objheader) + 1)
+            if (not offset2 or
+                    fdata.find(fdata[offset2 - 1] + objheader, offset2) > 0):
                 source.warning("Expected indirect object '%s'" % objheader)
                 return None
-            source.warning(('Indirect object %s found at incorrect offset %d'
-                           ' (expected offset %d)') %
+            source.warning(("Indirect object %s found at incorrect" +
+                            "offset %d (expected offset %d)") %
                            (objheader, offset2, offset))
             source.floc = offset2 + len(objheader)
 
@@ -551,6 +551,17 @@ class PdfReader(PdfDict):
                     # Mark the object as indirect, and
                     # add it to the list of streams if it starts a stream
                     sobj.indirect = key
+
+    def read_all(self):
+        deferred = self.deferred_objects
+        prev = set()
+        while 1:
+            new = deferred - prev
+            if not new:
+                break
+            prev |= deferred
+            for key in new:
+                self.loadindirect(key)
 
     def read_all(self):
         deferred = self.deferred_objects

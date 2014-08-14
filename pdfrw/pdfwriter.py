@@ -34,12 +34,12 @@ NullObject.Type = 'Null object'
 
 
 def FormatObjects(f, trailer, version='1.3', compress=True, killobj=(),
-        id=id, isinstance=isinstance, getattr=getattr, len=len,
-        sum=sum, set=set, str=str, basestring=basestring,
-        hasattr=hasattr, repr=repr, enumerate=enumerate,
-        list=list, dict=dict, tuple=tuple,
-        do_compress=do_compress, PdfArray=PdfArray,
-        PdfDict=PdfDict, PdfObject=PdfObject, encode=PdfString.encode):
+                  id=id, isinstance=isinstance, getattr=getattr, len=len,
+                  sum=sum, set=set, str=str, basestring=basestring,
+                  hasattr=hasattr, repr=repr, enumerate=enumerate,
+                  list=list, dict=dict, tuple=tuple,
+                  do_compress=do_compress, PdfArray=PdfArray,
+                  PdfDict=PdfDict, PdfObject=PdfObject, encode=PdfString.encode):
     ''' FormatObjects performs the actual formatting and disk write.
         Should be a class, was a class, turned into nested functions
         for performace (to reduce attribute lookups).
@@ -165,9 +165,9 @@ def FormatObjects(f, trailer, version='1.3', compress=True, killobj=(),
                PdfName.Pages: trailer.Root.Pages,
                None: trailer}.get
     swapobj = [(objid, swapobj(obj.Type)) for objid, obj in
-        killobj.iteritems()]
+               killobj.iteritems()]
     swapobj = dict((objid, obj is None and NullObject or obj) for objid, obj in
-        swapobj).get
+                   swapobj).get
 
     for objid in killobj:
         assert swapobj(objid) is not None
@@ -220,7 +220,7 @@ class PdfWriter(object):
         self._trailer = None
         if page.Type != PdfName.Page:
             raise PdfOutputError('Bad /Type:  Expected %s, found %s'
-                                  % (PdfName.Page, page.Type))
+                                 % (PdfName.Page, page.Type))
         inheritable = page.inheritable  # searches for resources
         self.pagearray.append(
             IndirectPdfDict(

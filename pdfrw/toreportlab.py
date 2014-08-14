@@ -109,6 +109,7 @@ def _makestr(rldoc, pdfobj):
     return str(getattr(pdfobj, 'encoded', pdfobj))
 
 
+
 def makerl_recurse(rldoc, pdfobj):
     docdict = getattr(pdfobj, 'derived_rl_obj', None)
     if docdict is not None:

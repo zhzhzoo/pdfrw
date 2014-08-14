@@ -38,7 +38,7 @@ class PdfTokens(object):
     # "normal" stuff is all but delimiters or whitespace.
 
     p_normal = r'(?:[^\\%s%s]+|\\[^%s])+' % (whitespace,
-        delimiters, whitespace)
+                                             delimiters, whitespace)
 
     p_comment = r'\%%[^%s]*' % eol
 
@@ -60,9 +60,9 @@ class PdfTokens(object):
     pattern = '|'.join([p_normal, p_name, p_hex_string, p_dictdelim,
                         p_literal_string, p_comment, p_catchall])
     findtok = re.compile('(%s)[%s]*' %
-        (pattern, whitespace), re.DOTALL).finditer
+                        (pattern, whitespace), re.DOTALL).finditer
     findparen = re.compile('(%s)[%s]*' %
-        (p_literal_string_extend, whitespace), re.DOTALL).finditer
+                          (p_literal_string_extend, whitespace), re.DOTALL).finditer
     splitname = re.compile(r'\#([0-9A-Fa-f]{2})').split
 
     def _cacheobj(cache, obj, constructor):
@@ -153,7 +153,8 @@ class PdfTokens(object):
                                 # If this happens, just terminate on first unescaped ).
                                 # The string won't be quite right, but that's a science
                                 # fair project for another time.
-                                (self.error, self.exception)[not ends]('Unterminated literal string')
+                                (self.error, self.exception)[not ends](
+                                    'Unterminated literal string')
                                 loc, ends, nest = ends
                                 token = fdata[m_start:loc] + ')' * nest
                                 current[0] = m_start, ends

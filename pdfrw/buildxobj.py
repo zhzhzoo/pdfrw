@@ -125,8 +125,8 @@ def getrects(inheritable, pageinfo, rotation):
         ctop = mtop - y
         cright = cleft + w
         cbot = ctop - h
-        cbox = max(mleft, cleft), max(mbot, cbot), \
-               min(mright, cright), min(mtop, ctop)
+        cbox = (max(mleft, cleft), max(mbot, cbot),
+                min(mright, cright), min(mtop, ctop))
         cbox = rotate_rect(cbox, -rotation)
     return mbox, cbox
 
@@ -151,8 +151,8 @@ def _cache_xobj(contents, resources, mbox, bbox, rotation):
         )
         rect = bbox
         if rotation:
-            matrix = rotate_point((1, 0), rotation) + \
-                     rotate_point((0, 1), rotation)
+            matrix = (rotate_point((1, 0), rotation) +
+                      rotate_point((0, 1), rotation))
             result.Matrix = PdfArray(matrix + (0, 0))
             rect = rotate_rect(rect, rotation)
 

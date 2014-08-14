@@ -93,7 +93,7 @@ class PdfDict(dict):
     _special = dict(indirect=('indirect', False),
                     stream=('stream', True),
                     _stream=('stream', False),
-                   )
+                    )
 
     whitespace = '\x00 \t\f'
     delimiters = r'()<>{}[\]/%'
