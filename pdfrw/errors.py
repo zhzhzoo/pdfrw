@@ -12,7 +12,7 @@ from exceptions import Exception
 
 logging.basicConfig(
     format='[%(levelname)s] %(filename)s:%(lineno)d %(message)s',
-    level=logging.WARNING)
+        level=logging.WARNING)
 
 log = logging.getLogger('pdfrw')
 

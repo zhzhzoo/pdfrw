@@ -31,6 +31,7 @@ Reference for content:   Adobe PDF reference, sixth edition, version 1.7
 from pdfrw.objects import PdfDict, PdfArray, PdfName
 from pdfrw.pdfreader import PdfReader
 from pdfrw.errors import log
+from pdfrw.uncompress import uncompress
 
 
 class ViewInfo(object):
@@ -197,7 +198,17 @@ def pagexobj(page, viewinfo=ViewInfo(), allow_compressed=True):
     rotation = get_rotation(inheritable.Rotate)
     mbox, bbox = getrects(inheritable, viewinfo, rotation)
     rotation += get_rotation(viewinfo.rotate)
-    contents = page.Contents
+    if isinstance(page.Contents, PdfArray):
+        if len(page.Contents) == 1:
+            contents = page.Contents[0]
+        else:
+            # decompress and join multiple streams
+            contlist = [c for c in page.Contents]
+            uncompress(contlist)
+            stream = '\n'.join([c.stream for c in contlist])
+            contents = PdfDict(stream=stream)
+    else:
+        contents = page.Contents
     # Make sure the only attribute is length
     # All the filters must have been executed
     assert int(contents.Length) == len(contents.stream)
